@@ -354,7 +354,7 @@ def _save_round(round_number, design_type, round_data, models, iden_opt, system,
         system=system,
         ranking=stage_results['ranking'],
         k_optimal_value=stage_results['k_optimal_value'],
-        rCC_values=stage_results['rCC_values'],
+        rCC_values=stage_results['rCC_values'], 
         J_k_values=stage_results['J_k_values'],
         best_uncert_result=stage_results['best_uncert_result'],
     )
