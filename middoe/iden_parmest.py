@@ -1410,8 +1410,12 @@ def _multi_start_runner(active_models, _unused, bmax, bmin, mutation, objf,
                 allr[sv].append(res[sv])
 
     return {
-        sv: (min([r for r in allr[sv] if r.success], key=attrgetter("fun"))
-             if any(r.success for r in allr[sv]) else None)
+        sv: (min(
+                [r for r in allr[sv] if r.success] or
+                [r for r in allr[sv] if np.isfinite(getattr(r, 'fun', np.inf))],
+                key=attrgetter("fun")
+             )
+             if allr[sv] else None)
         for sv in active_models
     }
 
@@ -1502,8 +1506,12 @@ def _multi_start_runner_serial(active_models, _unused, bmax, bmin,
                 allr[sv].append(res[sv])
 
     return {
-        sv: (min([r for r in allr[sv] if r.success], key=attrgetter("fun"))
-             if any(r.success for r in allr[sv]) else None)
+        sv: (min(
+                [r for r in allr[sv] if r.success] or
+                [r for r in allr[sv] if np.isfinite(getattr(r, 'fun', np.inf))],
+                key=attrgetter("fun")
+             )
+             if allr[sv] else None)
         for sv in active_models
     }
 
@@ -2130,7 +2138,7 @@ def _runner(active_models, theta_params, bmax, bmin, mutation, objf,
                 res = minimize(_objective_function, x0, args=args, method='SLSQP',
                                bounds=bounds,
                                options={'maxiter': maxit, 'ftol': tol, 'disp': False})
-            elif method == 'LMBFGS':
+            elif method in ['LMBFGS', 'LBFGSB', 'L-BFGS-B']:
                 res = minimize(_objective_function, x0, args=args, method='L-BFGS-B',
                                bounds=bounds,
                                options={'maxiter': maxit, 'ftol': tol, 'disp': False})
@@ -2165,7 +2173,7 @@ def _runner(active_models, theta_params, bmax, bmin, mutation, objf,
 
         # Hessian & inverse (only on the reference fits, not bootstrap replicates)
 
-        if not bootstrap_flag and method in ['SLSQP', 'SQP', 'NM', 'DE'] and varcov == 'H':
+        if not bootstrap_flag and method in ['SLSQP', 'SQP', 'NM', 'DE', 'LMBFGS', 'LBFGSB', 'L-BFGS-B'] and varcov == 'H':
             try:
                 loss = lambda t: _objective_function(t, data, [sv], thetac, system, models,
                                                      logging, objf, False, None)
@@ -2181,7 +2189,11 @@ def _runner(active_models, theta_params, bmax, bmin, mutation, objf,
 
             D = np.diag(thetac.astype(float))
             try:
-                inv = D @ (res.hess_inv if hasattr(res, 'hess_inv') else np.linalg.pinv(Hs)) @ D
+                raw_hi = res.hess_inv if hasattr(res, 'hess_inv') else np.linalg.pinv(Hs)
+                # L-BFGS-B returns a _LbfgsInvHessProduct (LinearOperator) — densify it
+                if not isinstance(raw_hi, np.ndarray):
+                    raw_hi = raw_hi @ np.eye(len(res.x))
+                inv = D @ raw_hi @ D
                 res.hess_inv = inv
             except Exception as e:
                 if logging:

@@ -1160,6 +1160,12 @@ def _run_single_pp(des_opt, system, models, core_number=0, round=round):
         }
     pltshow= des_opt['plt']
     optmethod = des_opt.get('meth', 'L')
+    method_aliases = {
+        'L': 'PS',
+        'G': 'DE',
+        'GL': 'DEPS'
+    }
+    optmethod = method_aliases.get(optmethod, optmethod)
 
     # ------------------------ CHOOSE METHOD (Local vs Global) ------------------------ #
 
@@ -1513,7 +1519,7 @@ def _optimiser(
         )
 
     else:
-        raise ValueError("optmethod must be 'L', 'G', or 'GL'")
+        raise ValueError("optmethod must be one of 'PS', 'DE', 'DEPS' (aliases accepted: 'L', 'G', 'GL')")
 
     return res_refine, index_dict
 

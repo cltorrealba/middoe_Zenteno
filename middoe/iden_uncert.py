@@ -1416,10 +1416,12 @@ def _uncert_metrics(
         pass
 
     # Confidence intervals and t-values
-    if varcov == 'B':
+    if varcov in ('H', 'B'):
+        # V is n_params×n_params (full covariance); select only active-param diagonal
         CI = tcrit * np.sqrt(np.diag(V))[active_idx]
         theta_std = np.sqrt(np.diag(V))[active_idx]
     else:
+        # varcov == 'M': V is n_active×n_active (built from LSA of active params only)
         CI = tcrit * np.sqrt(np.diag(V))
         theta_std = np.sqrt(np.diag(V))
     print(f'CI: {CI}')

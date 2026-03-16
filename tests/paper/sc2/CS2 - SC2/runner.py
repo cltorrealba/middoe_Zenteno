@@ -293,11 +293,82 @@
 # # )
 
 
+def _get_existing_rounds():
+    from pathlib import Path
+    from middoe.log_utils import read_excel
+
+    if not (Path.cwd() / 'data.xlsx').exists():
+        return []
+
+    data = read_excel()
+    return sorted(int(sheet) for sheet in data if str(sheet).isdigit())
+
+
+def _ensure_preliminary_data(system, models, insilicos):
+    from middoe.krnl_expera import expera
+
+    existing_rounds = set(_get_existing_rounds())
+    configured_rounds = sorted(int(sheet) for sheet in insilicos['prels'])
+
+    for round_number in configured_rounds:
+        if round_number not in existing_rounds:
+            expera(system, models, insilicos, None, expr=round_number)
+
+
+def _run_identification_round(system, models, iden_opt, round_number):
+    from middoe.iden_parmest import parmest
+    from middoe.iden_uncert import uncert
+    from middoe.sc_estima import estima
+
+    resultpr = parmest(system, models, iden_opt)
+    uncert_results = uncert(resultpr, system, models, iden_opt)
+    resultun = uncert_results['results']
+    obs = uncert_results['obs']
+
+    ranking, k_optimal_value, rCC_values, J_k_values, best_uncert_result = estima(
+        resultun, system, models, iden_opt, round_number
+    )
+
+    return {
+        'resultun': resultun,
+        'obs': obs,
+        'ranking': ranking,
+        'k_optimal_value': k_optimal_value,
+        'rCC_values': rCC_values,
+        'J_k_values': J_k_values,
+        'best_uncert_result': best_uncert_result,
+    }
+
+
+def _save_round(round_number, design_type, round_data, models, iden_opt, system, stage_results):
+    from middoe.log_utils import save_rounds
+
+    save_rounds(
+        round=round_number,
+        result=stage_results['resultun'],
+        design_type=design_type,
+        round_data=round_data,
+        models=models,
+        iden_opt=iden_opt,
+        obs=stage_results['obs'],
+        system=system,
+        ranking=stage_results['ranking'],
+        k_optimal_value=stage_results['k_optimal_value'],
+        rCC_values=stage_results['rCC_values'],
+        J_k_values=stage_results['J_k_values'],
+        best_uncert_result=stage_results['best_uncert_result'],
+    )
+
+
 def main():
+    import os
+    import numpy as np
+
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     theta = [50000, 75000, 0.4116, 111900, 9905, 30000]
     theta_n = [100000, 100000, 1, 100000, 100, 10000]
-    theta_mins = [10000, 0, 0.1, 50000, 10, 10000]
+    theta_mins = [10000, 1000, 0.1, 50000, 10, 10000]
     theta_maxs = [1000000, 200000, 10, 200000, 10000, 200000]
 
     system = {
@@ -371,7 +442,7 @@ def main():
         # type of the model interface, 'pym' for middoe.krnl_models, 'gpr' for gPAS models, function name for globally defined functions, 'pys' for python standalone scripts
         'creds': {'M': '@@TTmnoa698'},
         # credentials for gPAS models, if not needed, leave empty
-        'src': {'M': 'C:/Users/Tadmin/PycharmProjects/middoe/tests/paper/CS2 - SC1/model.py'},
+        'src': {'M': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model.py')},
         # for now for gPAS readable files, or python standalone scripts
 
         'theta': { # Theta parameters for each models
@@ -382,6 +453,12 @@ def main():
         },
         't_l': { # Minimum bounds for theta parameters (based on normalized to 1)
             'M': theta_mins
+        },
+        'mutation': {
+            'M': [True] * len(theta_n)
+        },
+        'V_matrix': {
+            'M': np.eye(len(theta_n))
         }
     }
 
@@ -417,21 +494,69 @@ def main():
         'log': False  # log the results
     }
 
-    from middoe.log_utils import  read_excel
-    data = read_excel('indata')
-    from middoe.iden_parmest import parmest
-    resultpr = parmest(system, models, iden_opt, data)
+    des_opt = {
+        'eps': 1e-3,
+        'pp_ob': 'E',
+        'plt': True,
+        'meth': 'L',
+        'itr': {
+            'pps': 100,
+            'maxpp': 500,
+            'tolpp': 1,
+        }
+    }
 
+    campaign = {
+        'generate_preliminary_if_missing': True,
+        'n_mbdoe_rounds': 1,
+        'parallel_design_runs': 1,
+        'save_archive': True,
+    }
 
-    from middoe.iden_uncert import uncert
-    uncert_results = uncert(data, resultpr, system, models, iden_opt)
-    resultun = uncert_results['results']
-    obs = uncert_results['obs']
+    from middoe.des_pp import mbdoe_pp
+    from middoe.krnl_expera import expera
+    from middoe.log_utils import save_to_jac
 
+    if campaign['generate_preliminary_if_missing']:
+        _ensure_preliminary_data(system, models, insilicos)
 
-    from middoe.sc_estima import estima
-    j = 4
-    ranking, k_optimal_value, rCC_values, J_k_values, best_uncert_result = estima(resultun, system, models, iden_opt, j, data)
+    existing_rounds = _get_existing_rounds()
+    if not existing_rounds:
+        raise RuntimeError('No rounds are available in data.xlsx after preliminary generation.')
+
+    round_data = {}
+    last_classic_round = max(int(sheet) for sheet in insilicos['prels'])
+    current_round = max(existing_rounds)
+
+    current_stage = _run_identification_round(system, models, iden_opt, current_round)
+    _save_round(
+        current_round,
+        'classic' if current_round <= last_classic_round else 'DOE',
+        round_data,
+        models,
+        iden_opt,
+        system,
+        current_stage,
+    )
+
+    for round_number in range(current_round + 1, current_round + campaign['n_mbdoe_rounds'] + 1):
+        designs = mbdoe_pp(
+            des_opt,
+            system,
+            models,
+            round=round_number,
+            num_parallel_runs=campaign['parallel_design_runs']
+        )
+
+        expera(system, models, insilicos, designs, expr=round_number, swps=designs.get('swps'))
+
+        stage_results = _run_identification_round(system, models, iden_opt, round_number)
+        _save_round(round_number, 'DOE', round_data, models, iden_opt, system, stage_results)
+
+    if campaign['save_archive']:
+        save_to_jac(round_data, purpose='iden')
+
+    return round_data
 
 if __name__ == "__main__":
     main()
