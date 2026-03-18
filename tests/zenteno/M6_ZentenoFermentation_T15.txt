@@ -1,0 +1,71 @@
+Algebraic Rules!
+mu = mu0*exp(59453*(T-300)/(300*8.314*T))*N/(N+Kn0*exp(46055*(T-293.15)/(293.15*8.314*T))+1e-9)
+betaG = betaG0*exp(11000*(T-296.15)/(296.15*8.314*T))*G/(G+Kg0*exp(46055*(T-293.15)/(293.15*8.314*T))+1e-9)*(Kie0*exp(46055*(T-293.15)/(293.15*8.314*T)))/(E+Kie0*exp(46055*(T-293.15)/(293.15*8.314*T))+1e-9)
+betaF = betaF0*exp(11000*(T-296.15)/(296.15*8.314*T))*F/(F+Kf0*exp(46055*(T-293.15)/(293.15*8.314*T))+1e-9)*(Kig0*exp(46055*(T-293.15)/(293.15*8.314*T)))/(G+Kig0*exp(46055*(T-293.15)/(293.15*8.314*T))+1e-9)*(Kie0*exp(46055*(T-293.15)/(293.15*8.314*T)))/(E+Kie0*exp(46055*(T-293.15)/(293.15*8.314*T))+1e-9)
+mrate = 0.01*exp(37681*(T-293.30)/(293.30*8.314*T))
+phiG = G/(G+F+1e-9)
+phiF = F/(G+F+1e-9)
+Kd = Kd0*exp(0.0415*E+130000*(T-305.65)/(305.65*8.314*T))*(T>=(-0.0001*E^3+0.0049*E^2-0.1279*E+315.89))
+
+ODEs (define the individual ODE equations - 1 per line)!
+dX/dt = (mu-Kd)*X
+dN/dt = -(mu/Yxn)*X+Nadd
+dG/dt = -((mu/Yxg)+(betaG/Yeg)+mrate*phiG)*X
+dF/dt = -((mu/Yxf)+(betaF/Yef)+mrate*phiF)*X
+dE/dt = (betaG+betaF)*X
+dS/dt = -((mu/Yxg)+(betaG/Yeg)+mrate*phiG)*X - ((mu/Yxf)+(betaF/Yef)+mrate*phiF)*X
+
+Input variables!
+T = 288.15
+% Smooth sigmoid pulse for nutrient addition; tau controls edge smoothness
+% Original rectangle: (t>=36)*(t<37)*0.1
+% Sigmoid-smoothed approximation preserving amplitude:
+% Nadd(t) = 0.1 * (sig((t-36)/tau) - sig((t-37)/tau)), where sig(x)=1/(1+exp(-x))
+% Choose tau=0.1 (hours) for ~0.2h transition width
+Nadd = 0.1*(1/(1+exp(-(t-36)/0.1)) - 1/(1+exp(-(t-37)/0.1)))
+
+Measured Outputs (define the measured sensors - 1 per line)!
+y1 = S
+
+Parameter names and values (define all the system parameters - 1 per line, OPTIONAL - define known paramter values)!
+mu0 = 0.141665
+betaG0 = 1.41182
+betaF0 = 8.49482
+Kn0 = 0.226882
+Kg0 = 3.1514
+Kf0 = 2.97625
+Kig0 = 29.5276
+Kie0 = 2.99809
+Kd0 = 0.0000311736
+Yxn = 9.80576
+Yxg = 0.394345
+Yxf = 0.18622
+Yeg = 0.14133
+Yef = 0.96932
+
+State names and initial values (define all the model state names - 1 per line, OPTIONAL - define known initial values)!
+X = 0.5
+N = 0.14
+G = 110
+F = 110
+E = 0
+S = 220
+
+Analyse (list the unknown parameter and initial conditions which should be included into the strucutral identifiability analysis)!
+mu0
+betaG0
+betaF0
+Kn0
+Kg0
+Kf0
+Kig0
+Kie0
+Kd0
+Yxn
+Yxg
+Yxf
+Yeg
+Yef
+
+SampleTimes!
+0,24,30,48,54,72,78,96,102,120,126,144,148,168,174,192,198,216,220,240
